@@ -1,0 +1,258 @@
+@page "/clients/{ClientId:int}"
+@using GreenGrass.Models
+@using GreenGrass.Services
+@inject IClientService ClientService
+@inject IPaymentService PaymentService
+@inject NavigationManager Navigation
+
+<PageTitle>@(_client?.FullName ?? "Client Details") - GreenGrass</PageTitle>
+
+@if (_client == null)
+{
+    <div class="text-center">
+        <div class="spinner-border" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+    </div>
+}
+else
+{
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1>@_client.FullName</h1>
+        <div>
+            <button class="btn btn-outline-secondary me-2" @onclick="@(() => Navigation.NavigateTo("/clients"))">
+                <i class="bi bi-arrow-left"></i> Back to Clients
+            </button>
+            <button class="btn btn-primary" @onclick="@(() => Navigation.NavigateTo($"/clients/{_client.Id}/edit"))">
+                <i class="bi bi-pencil"></i> Edit Client
+            </button>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Client Information -->
+        <div class="col-md-6">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">Contact Information</h5>
+                </div>
+                <div class="card-body">
+                    <p><strong>Email:</strong> @_client.Email</p>
+                    <p><strong>Phone:</strong> @_client.PhoneNumber</p>
+                    <p><strong>Service Address:</strong><br>@_client.Address.FullAddress</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Payment Methods -->
+        <div class="col-md-6">
+            <div class="card mb-4">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Payment Methods</h5>
+                    <button class="btn btn-sm btn-outline-primary" @onclick="ShowAddPaymentMethodModal">
+                        <i class="bi bi-plus"></i> Add
+                    </button>
+                </div>
+                <div class="card-body">
+                    @if (_client.PaymentMethods.Any())
+                    {
+                        @foreach (var pm in _client.PaymentMethods)
+                        {
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <div>
+                                    <span class="badge bg-secondary me-2">@pm.CardBrand</span>
+                                    **** **** **** @pm.CardNumberLast4
+                                    @if (pm.IsDefault)
+                                    {
+                                        <span class="badge bg-primary ms-2">Default</span>
+                                    }
+                                </div>
+                                <button class="btn btn-sm btn-outline-danger" 
+                                        @onclick="() => RemovePaymentMethod(pm.Id)">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </div>
+                        }
+                    }
+                    else
+                    {
+                        <p class="text-muted">No payment methods on file</p>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Service History -->
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Service History</h5>
+            <button class="btn btn-success" @onclick="ShowAddServiceModal">
+                <i class="bi bi-plus-circle"></i> Add Service
+            </button>
+        </div>
+        <div class="card-body">
+            @if (_serviceHistory.Any())
+            {
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Service</th>
+                                <th>Amount</th>
+                                <th>Status</th>
+                                <th>Payment</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var service in _serviceHistory.OrderByDescending(s => s.ServiceDate))
+                            {
+                                <tr>
+                                    <td>@service.ServiceDate.ToString("MMM dd, yyyy")</td>
+                                    <td>@service.ServiceType</td>
+                                    <td>$@service.Amount.ToString("F2")</td>
+                                    <td>
+                                        <span class="badge bg-@GetStatusColor(service.Status)">
+                                            @service.Status
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-@GetPaymentStatusColor(service.PaymentStatus)">
+                                            @service.PaymentStatus
+                                        </span>
+                                    </td>
+                                    <td>
+                                        @if (service.Status == ServiceStatus.Completed && service.PaymentStatus == PaymentStatus.Pending)
+                                        {
+                                            <button class="btn btn-sm btn-success" 
+                                                    @onclick="() => ProcessPayment(service)" 
+                                                    disabled="@_isProcessingPayment">
+                                                @if (_isProcessingPayment)
+                                                {
+                                                    <span class="spinner-border spinner-border-sm me-1"></span>
+                                                }
+                                                Charge Card
+                                            </button>
+                                        }
+                                        else if (service.Status != ServiceStatus.Completed)
+                                        {
+                                            <button class="btn btn-sm btn-primary" 
+                                                    @onclick="() => MarkAsCompleted(service)">
+                                                Mark Complete
+                                            </button>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+            else
+            {
+                <p class="text-muted">No service history available</p>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public int ClientId { get; set; }
+    
+    private Client? _client;
+    private List<ServiceRecord> _serviceHistory = new();
+    private bool _isProcessingPayment;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadClient();
+    }
+
+    private async Task LoadClient()
+    {
+        _client = await ClientService.GetClientByIdAsync(ClientId);
+        if (_client != null)
+        {
+            _serviceHistory = await ClientService.GetClientServiceHistoryAsync(ClientId);
+        }
+    }
+
+    private async Task ProcessPayment(ServiceRecord service)
+    {
+        if (_client?.DefaultPaymentMethod == null)
+        {
+            // Show error message
+            return;
+        }
+
+        _isProcessingPayment = true;
+        StateHasChanged();
+
+        try
+        {
+            var result = await PaymentService.ProcessPaymentAsync(ClientId, service.Amount, service.Description);
+            
+            if (result.Success)
+            {
+                service.PaymentStatus = PaymentStatus.Paid;
+                service.PaymentTransactionId = result.TransactionId;
+                await ClientService.UpdateServiceRecordAsync(service);
+                await LoadClient(); // Refresh data
+            }
+            else
+            {
+                // Show error message
+                Console.WriteLine($"Payment failed: {result.ErrorMessage}");
+            }
+        }
+        finally
+        {
+            _isProcessingPayment = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task MarkAsCompleted(ServiceRecord service)
+    {
+        service.Status = ServiceStatus.Completed;
+        service.CompletedDate = DateTime.Now;
+        await ClientService.UpdateServiceRecordAsync(service);
+        await LoadClient();
+    }
+
+    private void ShowAddServiceModal()
+    {
+        // TODO: Implement modal for adding new service
+        Navigation.NavigateTo($"/clients/{ClientId}/add-service");
+    }
+
+    private void ShowAddPaymentMethodModal()
+    {
+        // TODO: Implement modal for adding payment method
+        Navigation.NavigateTo($"/clients/{ClientId}/add-payment-method");
+    }
+
+    private async Task RemovePaymentMethod(int paymentMethodId)
+    {
+        await PaymentService.RemovePaymentMethodAsync(ClientId, paymentMethodId);
+        await LoadClient();
+    }
+
+    private string GetStatusColor(ServiceStatus status) => status switch
+    {
+        ServiceStatus.Completed => "success",
+        ServiceStatus.InProgress => "warning",
+        ServiceStatus.Cancelled => "danger",
+        _ => "secondary"
+    };
+
+    private string GetPaymentStatusColor(PaymentStatus status) => status switch
+    {
+        PaymentStatus.Paid => "success",
+        PaymentStatus.Failed => "danger",
+        PaymentStatus.Processing => "warning",
+        _ => "secondary"
+    };
+}

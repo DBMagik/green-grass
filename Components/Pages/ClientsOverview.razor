@@ -1,0 +1,74 @@
+@page "/clients"
+@using GreenGrass.Models
+@using GreenGrass.Services
+@inject IClientService ClientService
+@inject NavigationManager Navigation
+
+<PageTitle>Clients - GreenGrass</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>Clients</h1>
+    <button class="btn btn-primary" @onclick="@(() => Navigation.NavigateTo("/clients/new"))">
+        <i class="bi bi-plus-circle"></i> Add New Client
+    </button>
+</div>
+
+@if (_clients == null)
+{
+    <div class="text-center">
+        <div class="spinner-border" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+    </div>
+}
+else if (!_clients.Any())
+{
+    <div class="alert alert-info">
+        <h4>No clients found</h4>
+        <p>Start by adding your first client to begin managing your lawncare business.</p>
+    </div>
+}
+else
+{
+    <div class="row">
+        @foreach (var client in _clients)
+        {
+            <div class="col-md-6 col-lg-4 mb-3">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <h5 class="card-title">@client.FullName</h5>
+                        <p class="card-text">
+                            <i class="bi bi-envelope"></i> @client.Email<br>
+                            <i class="bi bi-telephone"></i> @client.PhoneNumber<br>
+                            <i class="bi bi-geo-alt"></i> @client.Address.FullAddress
+                        </p>
+                        <div class="d-flex justify-content-between align-items-center">
+                            <small class="text-muted">
+                                @client.ServiceHistory.Count service(s)
+                            </small>
+                            <div class="btn-group" role="group">
+                                <button class="btn btn-sm btn-outline-primary" 
+                                        @onclick="@(() => Navigation.NavigateTo($"/clients/{client.Id}"))">
+                                    View
+                                </button>
+                                <button class="btn btn-sm btn-outline-secondary" 
+                                        @onclick="@(() => Navigation.NavigateTo($"/clients/{client.Id}/edit"))">
+                                    Edit
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    private List<Client>? _clients;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _clients = await ClientService.GetAllClientsAsync();
+    }
+}
