@@ -1,6 +1,4 @@
-# GreenGrass Ideal Rewrite
-
-The rewrite fixes the button not working for adding a new client. The pages just had to be made interactable. 
+# GreenGrass
 
 A simple ASP.NET Core Blazor application for customer management.
 
@@ -115,3 +113,4 @@ INSERT INTO Customer (
     '5678'
 );
 ```
+
