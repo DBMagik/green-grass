@@ -1,6 +1,8 @@
 @page "/clients"
+@rendermode InteractiveServer
 @using GreenGrass.Models
 @using GreenGrass.Services
+@using Microsoft.Identity.Client
 @inject IClientService ClientService
 @inject NavigationManager Navigation
 
@@ -8,9 +10,9 @@
 
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h1>Clients</h1>
-    <button class="btn btn-primary" @onclick="@NavigateToNewClient">
-        <i class="bi bi-plus-circle"></i> Add New Client
-    </button>
+    <p>
+        <button class="btn btn-primary" @onclick="AddNewClient">Add New Client</button>
+    </p>
 </div>
 
 @if (_clients == null)
@@ -79,9 +81,25 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        _clients = await ClientService.GetAllClientsAsync();
+        try
+        {
+            // I suspect the error is happening on the next line.
+            _clients = await ClientService.GetAllClientsAsync();
+        }
+        catch (Exception ex)
+        {
+            // This will print the hidden error to your application's console.
+            Console.WriteLine("!!!!!!!!!! EXCEPTION IN OnInitializedAsync !!!!!!!!!!");
+            Console.WriteLine(ex);
+            // Initialize _clients to an empty list so the page can still render.
+            _clients = new List<Client>();
+        }
     }
     
-    private void NavigateToNewClient() => Navigation.NavigateTo("/clients/new");
+    private void AddNewClient()
+    {
+        // This should now work correctly
+        Navigation.NavigateTo("/clients/new");
+    }
 
 }

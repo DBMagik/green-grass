@@ -1,0 +1,458 @@
+@page "/reports"
+@rendermode InteractiveServer
+@using GreenGrass.Models
+@using GreenGrass.Services
+@inject IClientService ClientService
+@inject NavigationManager Navigation
+
+<PageTitle>Reports - GreenGrass</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>Business Reports</h1>
+    <div class="btn-group" role="group">
+        <button class="btn btn-outline-primary" @onclick="ExportReport">
+            <i class="bi bi-download"></i> Export
+        </button>
+        <button class="btn btn-outline-secondary" @onclick="PrintReport">
+            <i class="bi bi-printer"></i> Print
+        </button>
+    </div>
+</div>
+
+<!-- Report Period Selection -->
+<div class="card mb-4">
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-3">
+                <label for="reportPeriod" class="form-label">Report Period</label>
+                <select id="reportPeriod" class="form-select" @bind="_selectedPeriod" @bind:after="LoadReportData">
+                    <option value="week">This Week</option>
+                    <option value="month">This Month</option>
+                    <option value="quarter">This Quarter</option>
+                    <option value="year">This Year</option>
+                    <option value="custom">Custom Range</option>
+                </select>
+            </div>
+            @if (_selectedPeriod == "custom")
+            {
+                <div class="col-md-3">
+                    <label for="startDate" class="form-label">Start Date</label>
+                    <input id="startDate" type="date" class="form-control" @bind="_startDate" @bind:after="LoadReportData" />
+                </div>
+                <div class="col-md-3">
+                    <label for="endDate" class="form-label">End Date</label>
+                    <input id="endDate" type="date" class="form-control" @bind="_endDate" @bind:after="LoadReportData" />
+                </div>
+            }
+            <div class="col-md-3 d-flex align-items-end">
+                <button class="btn btn-primary w-100" @onclick="LoadReportData">
+                    <i class="bi bi-arrow-clockwise"></i> Refresh
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@if (_isLoading)
+{
+    <div class="text-center">
+        <div class="spinner-border" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+    </div>
+}
+else
+{
+    <!-- Key Metrics -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h5 class="card-title text-success">$@_totalRevenue.ToString("F2")</h5>
+                    <p class="card-text">Total Revenue</p>
+                    <small class="text-muted">@_completedServices services</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h5 class="card-title text-primary">@_activeClients</h5>
+                    <p class="card-text">Active Clients</p>
+                    <small class="text-muted">@_newClients new this period</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h5 class="card-title text-info">$@_averageServiceValue.ToString("F2")</h5>
+                    <p class="card-text">Avg Service Value</p>
+                    <small class="text-muted">Per completed service</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h5 class="card-title text-warning">$@_pendingRevenue.ToString("F2")</h5>
+                    <p class="card-text">Pending Revenue</p>
+                    <small class="text-muted">@_pendingServices services</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Charts Row -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h6 class="mb-0">Revenue by Service Type</h6>
+                </div>
+                <div class="card-body">
+                    @if (_serviceTypeRevenue.Any())
+                    {
+                        @foreach (var item in _serviceTypeRevenue.OrderByDescending(x => x.Value))
+                        {
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <span>@item.Key</span>
+                                <div class="d-flex align-items-center">
+                                    <div class="progress me-2" style="width: 100px; height: 8px;">
+                                        <div class="progress-bar" style="width: @((_totalRevenue > 0 ? (item.Value / _totalRevenue * 100) : 0).ToString("F1"))%"></div>
+                                    </div>
+                                    <span class="fw-bold">$@item.Value.ToString("F2")</span>
+                                </div>
+                            </div>
+                        }
+                    }
+                    else
+                    {
+                        <p class="text-muted">No data available for this period</p>
+                    }
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h6 class="mb-0">Payment Status Distribution</h6>
+                </div>
+                <div class="card-body">
+                    @if (_paymentStatusCounts.Any())
+                    {
+                        @foreach (var item in _paymentStatusCounts.OrderByDescending(x => x.Value))
+                        {
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <span class="badge bg-@GetPaymentStatusColor(item.Key)">@item.Key</span>
+                                <div class="d-flex align-items-center">
+                                    <div class="progress me-2" style="width: 100px; height: 8px;">
+                                        <div class="progress-bar bg-@GetPaymentStatusColor(item.Key)" 
+                                             style="width: @((_totalServices > 0 ? (item.Value / (double)_totalServices * 100) : 0).ToString("F1"))%"></div>
+                                    </div>
+                                    <span class="fw-bold">@item.Value</span>
+                                </div>
+                            </div>
+                        }
+                    }
+                    else
+                    {
+                        <p class="text-muted">No data available for this period</p>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Top Clients -->
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header">
+                    <h6 class="mb-0">Top Clients by Revenue</h6>
+                </div>
+                <div class="card-body">
+                    @if (_topClients.Any())
+                    {
+                        <div class="table-responsive">
+                            <table class="table table-sm">
+                                <thead>
+                                    <tr>
+                                        <th>Client</th>
+                                        <th>Services</th>
+                                        <th>Revenue</th>
+                                        <th>Last Service</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var client in _topClients.Take(10))
+                                    {
+                                        <tr>
+                                            <td>
+                                                <a href="/clients/@client.Id" class="text-decoration-none">
+                                                    @client.FullName
+                                                </a>
+                                            </td>
+                                            <td>@client.ServiceCount</td>
+                                            <td>$@client.TotalRevenue.ToString("F2")</td>
+                                            <td>@client.LastServiceDate?.ToString("MMM dd, yyyy")</td>
+                                            <td>
+                                                <span class="badge bg-@(client.IsActive ? "success" : "secondary")">
+                                                    @(client.IsActive ? "Active" : "Inactive")
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                    else
+                    {
+                        <p class="text-muted">No client data available for this period</p>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent Activity -->
+    <div class="row">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header">
+                    <h6 class="mb-0">Recent Services</h6>
+                </div>
+                <div class="card-body">
+                    @if (_recentServices.Any())
+                    {
+                        <div class="table-responsive">
+                            <table class="table table-sm">
+                                <thead>
+                                    <tr>
+                                        <th>Date</th>
+                                        <th>Client</th>
+                                        <th>Service</th>
+                                        <th>Amount</th>
+                                        <th>Status</th>
+                                        <th>Payment</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var service in _recentServices.Take(15))
+                                    {
+                                        <tr>
+                                            <td>@service.ServiceDate.ToString("MMM dd")</td>
+                                            <td>
+                                                <a href="/clients/@service.ClientId" class="text-decoration-none">
+                                                    @service.Client?.FullName
+                                                </a>
+                                            </td>
+                                            <td>
+                                                <span class="badge bg-secondary">@service.ServiceType</span>
+                                            </td>
+                                            <td>$@service.Amount.ToString("F2")</td>
+                                            <td>
+                                                <span class="badge bg-@GetServiceStatusColor(service.Status)">
+                                                    @service.Status
+                                                </span>
+                                            </td>
+                                            <td>
+                                                <span class="badge bg-@GetPaymentStatusColor(service.PaymentStatus)">
+                                                    @service.PaymentStatus
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                    else
+                    {
+                        <p class="text-muted">No recent services for this period</p>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private string _selectedPeriod = "month";
+    private DateTime _startDate = DateTime.Now.AddMonths(-1);
+    private DateTime _endDate = DateTime.Now;
+    private bool _isLoading = false;
+
+    // Report Data
+    private decimal _totalRevenue = 0;
+    private decimal _pendingRevenue = 0;
+    private decimal _averageServiceValue = 0;
+    private int _activeClients = 0;
+    private int _newClients = 0;
+    private int _completedServices = 0;
+    private int _pendingServices = 0;
+    private int _totalServices = 0;
+
+    private Dictionary<ServiceType, decimal> _serviceTypeRevenue = new();
+    private Dictionary<PaymentStatus, int> _paymentStatusCounts = new();
+    private List<ClientReportData> _topClients = [];
+    private List<ServiceRecord> _recentServices = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadReportData();
+    }
+
+    private async Task LoadReportData()
+    {
+        _isLoading = true;
+        StateHasChanged();
+
+        try
+        {
+            // Calculate date range based on selected period
+            var (startDate, endDate) = GetDateRange();
+
+            // Load all clients and their service data
+            var clients = await ClientService.GetAllClientsAsync();
+            var allServices = new List<ServiceRecord>();
+
+            foreach (var client in clients)
+            {
+                var serviceHistory = await ClientService.GetClientServiceHistoryAsync(client.Id);
+                foreach (var service in serviceHistory)
+                {
+                    service.Client = client;
+                    allServices.Add(service);
+                }
+            }
+
+            // Filter services by date range
+            var filteredServices = allServices.Where(s => 
+                s.ServiceDate >= startDate && s.ServiceDate <= endDate).ToList();
+
+            // Calculate metrics
+            CalculateMetrics(clients, filteredServices, startDate);
+            CalculateServiceTypeRevenue(filteredServices);
+            CalculatePaymentStatusDistribution(filteredServices);
+            CalculateTopClients(clients, filteredServices);
+            GetRecentServices(filteredServices);
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private (DateTime startDate, DateTime endDate) GetDateRange()
+    {
+        var now = DateTime.Now;
+        return _selectedPeriod switch
+        {
+            "week" => (now.AddDays(-7), now),
+            "month" => (now.AddMonths(-1), now),
+            "quarter" => (now.AddMonths(-3), now),
+            "year" => (now.AddYears(-1), now),
+            "custom" => (_startDate, _endDate),
+            _ => (now.AddMonths(-1), now)
+        };
+    }
+
+    private void CalculateMetrics(List<Client> clients, List<ServiceRecord> services, DateTime startDate)
+    {
+        _totalServices = services.Count;
+        _completedServices = services.Count(s => s.Status == ServiceStatus.Completed);
+        _pendingServices = services.Count(s => s.Status == ServiceStatus.Pending);
+        
+        _totalRevenue = services.Where(s => s.PaymentStatus == PaymentStatus.Paid).Sum(s => s.Amount);
+        _pendingRevenue = services.Where(s => s.PaymentStatus == PaymentStatus.Pending).Sum(s => s.Amount);
+        _averageServiceValue = _completedServices > 0 ? _totalRevenue / _completedServices : 0;
+        
+        _activeClients = clients.Count(c => c.IsActive);
+        _newClients = clients.Count(c => c.CreatedDate >= startDate);
+    }
+
+    private void CalculateServiceTypeRevenue(List<ServiceRecord> services)
+    {
+        _serviceTypeRevenue = services
+            .Where(s => s.PaymentStatus == PaymentStatus.Paid)
+            .GroupBy(s => s.ServiceType)
+            .ToDictionary(g => g.Key, g => g.Sum(s => s.Amount));
+    }
+
+    private void CalculatePaymentStatusDistribution(List<ServiceRecord> services)
+    {
+        _paymentStatusCounts = services
+            .GroupBy(s => s.PaymentStatus)
+            .ToDictionary(g => g.Key, g => g.Count());
+    }
+
+    private void CalculateTopClients(List<Client> clients, List<ServiceRecord> services)
+    {
+        _topClients = clients.Select(client =>
+        {
+            var clientServices = services.Where(s => s.ClientId == client.Id).ToList();
+            return new ClientReportData
+            {
+                Id = client.Id,
+                FullName = client.FullName,
+                IsActive = client.IsActive,
+                ServiceCount = clientServices.Count,
+                TotalRevenue = clientServices.Where(s => s.PaymentStatus == PaymentStatus.Paid).Sum(s => s.Amount),
+                LastServiceDate = clientServices.OrderByDescending(s => s.ServiceDate).FirstOrDefault()?.ServiceDate
+            };
+        })
+        .Where(c => c.ServiceCount > 0)
+        .OrderByDescending(c => c.TotalRevenue)
+        .ToList();
+    }
+
+    private void GetRecentServices(List<ServiceRecord> services)
+    {
+        _recentServices = services
+            .OrderByDescending(s => s.ServiceDate)
+            .ToList();
+    }
+
+    private void ExportReport()
+    {
+        // TODO: Implement export functionality
+        Console.WriteLine("Export report functionality not implemented yet");
+    }
+
+    private void PrintReport()
+    {
+        // TODO: Implement print functionality
+        Console.WriteLine("Print report functionality not implemented yet");
+    }
+
+    private string GetServiceStatusColor(ServiceStatus status) => status switch
+    {
+        ServiceStatus.Completed => "success",
+        ServiceStatus.InProgress => "warning",
+        ServiceStatus.Cancelled => "danger",
+        _ => "secondary"
+    };
+
+    private string GetPaymentStatusColor(PaymentStatus status) => status switch
+    {
+        PaymentStatus.Paid => "success",
+        PaymentStatus.Failed => "danger",
+        PaymentStatus.Processing => "warning",
+        PaymentStatus.Refunded => "info",
+        _ => "secondary"
+    };
+
+    private class ClientReportData
+    {
+        public int Id { get; set; }
+        public string FullName { get; set; } = "";
+        public bool IsActive { get; set; }
+        public int ServiceCount { get; set; }
+        public decimal TotalRevenue { get; set; }
+        public DateTime? LastServiceDate { get; set; }
+    }
+}

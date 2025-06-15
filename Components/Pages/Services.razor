@@ -1,0 +1,300 @@
+@page "/services"
+@rendermode InteractiveServer
+@using GreenGrass.Models
+@using GreenGrass.Services
+@inject IClientService ClientService
+@inject NavigationManager Navigation
+
+<PageTitle>Services - GreenGrass</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>Service Management</h1>
+    <button class="btn btn-primary" @onclick="ShowAddServiceModal">
+        <i class="bi bi-plus-circle"></i> Add New Service
+    </button>
+</div>
+
+<!-- Service Statistics -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <h5 class="card-title text-primary">@_totalServices</h5>
+                <p class="card-text">Total Services</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <h5 class="card-title text-warning">@_pendingServices</h5>
+                <p class="card-text">Pending</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <h5 class="card-title text-info">@_inProgressServices</h5>
+                <p class="card-text">In Progress</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <h5 class="card-title text-success">@_completedServices</h5>
+                <p class="card-text">Completed</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Filter and Search -->
+<div class="card mb-4">
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-3">
+                <label for="statusFilter" class="form-label">Status Filter</label>
+                <select id="statusFilter" class="form-select" @bind="_selectedStatus" @bind:after="FilterServices">
+                    <option value="">All Statuses</option>
+                    <option value="Pending">Pending</option>
+                    <option value="InProgress">In Progress</option>
+                    <option value="Completed">Completed</option>
+                    <option value="Cancelled">Cancelled</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label for="serviceTypeFilter" class="form-label">Service Type</label>
+                <select id="serviceTypeFilter" class="form-select" @bind="_selectedServiceType" @bind:after="FilterServices">
+                    <option value="">All Types</option>
+                    @foreach (var serviceType in Enum.GetValues<ServiceType>())
+                    {
+                        <option value="@serviceType">@serviceType</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label for="searchText" class="form-label">Search</label>
+                <input id="searchText" type="text" class="form-control" placeholder="Search by client name or description..." 
+                       @bind="_searchText" @bind:after="FilterServices" />
+            </div>
+            <div class="col-md-2 d-flex align-items-end">
+                <button class="btn btn-outline-secondary w-100" @onclick="ClearFilters">
+                    <i class="bi bi-x-circle"></i> Clear
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Services List -->
+@if (_filteredServices == null)
+{
+    <div class="text-center">
+        <div class="spinner-border" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+    </div>
+}
+else if (!_filteredServices.Any())
+{
+    <div class="alert alert-info">
+        <h4>No services found</h4>
+        <p>@(_allServices.Any() ? "No services match your current filters." : "Start by adding your first service.")</p>
+    </div>
+}
+else
+{
+    <div class="card">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Client</th>
+                            <th>Service Type</th>
+                            <th>Description</th>
+                            <th>Amount</th>
+                            <th>Status</th>
+                            <th>Payment</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var service in _filteredServices.OrderByDescending(s => s.ServiceDate))
+                        {
+                            <tr>
+                                <td>@service.ServiceDate.ToString("MMM dd, yyyy")</td>
+                                <td>
+                                    <a href="/clients/@service.ClientId" class="text-decoration-none">
+                                        @service.Client?.FullName
+                                    </a>
+                                </td>
+                                <td>
+                                    <span class="badge bg-secondary">@service.ServiceType</span>
+                                </td>
+                                <td>@service.Description</td>
+                                <td>$@service.Amount.ToString("F2")</td>
+                                <td>
+                                    <span class="badge bg-@GetStatusColor(service.Status)">
+                                        @service.Status
+                                    </span>
+                                </td>
+                                <td>
+                                    <span class="badge bg-@GetPaymentStatusColor(service.PaymentStatus)">
+                                        @service.PaymentStatus
+                                    </span>
+                                </td>
+                                <td>
+                                    <div class="btn-group" role="group">
+                                        @if (service.Status != ServiceStatus.Completed)
+                                        {
+                                            <button class="btn btn-sm btn-success" @onclick="() => MarkAsCompleted(service)">
+                                                <i class="bi bi-check-circle"></i>
+                                            </button>
+                                        }
+                                        <button class="btn btn-sm btn-outline-primary" @onclick="() => EditService(service)">
+                                            <i class="bi bi-pencil"></i>
+                                        </button>
+                                        <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteService(service)">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<ServiceRecord> _allServices = [];
+    private List<ServiceRecord> _filteredServices = [];
+    private List<Client> _clients = [];
+    
+    private string _selectedStatus = "";
+    private string _selectedServiceType = "";
+    private string _searchText = "";
+    
+    private int _totalServices = 0;
+    private int _pendingServices = 0;
+    private int _inProgressServices = 0;
+    private int _completedServices = 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        _clients = await ClientService.GetAllClientsAsync();
+        _allServices = [];
+        
+        // Collect all service records from all clients
+        foreach (var client in _clients)
+        {
+            var serviceHistory = await ClientService.GetClientServiceHistoryAsync(client.Id);
+            foreach (var service in serviceHistory)
+            {
+                service.Client = client; // Set the client reference
+                _allServices.Add(service);
+            }
+        }
+        
+        UpdateStatistics();
+        FilterServices();
+    }
+
+    private void UpdateStatistics()
+    {
+        _totalServices = _allServices.Count;
+        _pendingServices = _allServices.Count(s => s.Status == ServiceStatus.Pending);
+        _inProgressServices = _allServices.Count(s => s.Status == ServiceStatus.InProgress);
+        _completedServices = _allServices.Count(s => s.Status == ServiceStatus.Completed);
+    }
+
+    private void FilterServices()
+    {
+        var filtered = _allServices.AsEnumerable();
+
+        if (!string.IsNullOrEmpty(_selectedStatus) && Enum.TryParse<ServiceStatus>(_selectedStatus, out var status))
+        {
+            filtered = filtered.Where(s => s.Status == status);
+        }
+
+        if (!string.IsNullOrEmpty(_selectedServiceType) && Enum.TryParse<ServiceType>(_selectedServiceType, out var serviceType))
+        {
+            filtered = filtered.Where(s => s.ServiceType == serviceType);
+        }
+
+        if (!string.IsNullOrEmpty(_searchText))
+        {
+            var searchLower = _searchText.ToLower();
+            filtered = filtered.Where(s => 
+                s.Client?.FullName.ToLower().Contains(searchLower) == true ||
+                s.Description.ToLower().Contains(searchLower));
+        }
+
+        _filteredServices = filtered.ToList();
+        StateHasChanged();
+    }
+
+    private void ClearFilters()
+    {
+        _selectedStatus = "";
+        _selectedServiceType = "";
+        _searchText = "";
+        FilterServices();
+    }
+
+    private async Task MarkAsCompleted(ServiceRecord service)
+    {
+        service.Status = ServiceStatus.Completed;
+        service.CompletedDate = DateTime.Now;
+        await ClientService.UpdateServiceRecordAsync(service);
+        await LoadData();
+    }
+
+    private void EditService(ServiceRecord service)
+    {
+        // TODO: Implement service editing modal or navigate to edit page
+        Navigation.NavigateTo($"/clients/{service.ClientId}/services/{service.Id}/edit");
+    }
+
+    private async Task DeleteService(ServiceRecord service)
+    {
+        // TODO: Implement proper delete confirmation
+        // For now, just mark as cancelled
+        service.Status = ServiceStatus.Cancelled;
+        await ClientService.UpdateServiceRecordAsync(service);
+        await LoadData();
+    }
+
+    private void ShowAddServiceModal()
+    {
+        // TODO: Implement add service modal
+        Navigation.NavigateTo("/services/new");
+    }
+
+    private string GetStatusColor(ServiceStatus status) => status switch
+    {
+        ServiceStatus.Completed => "success",
+        ServiceStatus.InProgress => "warning",
+        ServiceStatus.Cancelled => "danger",
+        _ => "secondary"
+    };
+
+    private string GetPaymentStatusColor(PaymentStatus status) => status switch
+    {
+        PaymentStatus.Paid => "success",
+        PaymentStatus.Failed => "danger",
+        PaymentStatus.Processing => "warning",
+        _ => "secondary"
+    };
+}
