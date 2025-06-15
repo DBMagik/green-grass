@@ -1,5 +1,7 @@
 using GreenGrass.Components;
 using GreenGrass.Services;
+using GreenGrass.Data;
+using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -7,12 +9,13 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
-// Register application services
-builder.Services.AddSingleton<GreenGrass.Services.IClientService, GreenGrass.Services.ClientService>();
-builder.Services.AddSingleton<GreenGrass.Services.IPaymentService, GreenGrass.Services.PaymentService>();
+builder.Services.AddDbContext<ApplicationDbContext>(options =>
+    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+
 
 // Register application services
-builder.Services.AddSingleton<IClientService, ClientService>();
+
+builder.Services.AddScoped<IClientService, ClientService>(); 
 builder.Services.AddScoped<IPaymentService, PaymentService>();
 
 var app = builder.Build();
