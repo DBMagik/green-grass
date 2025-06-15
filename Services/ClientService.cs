@@ -1,8 +1,12 @@
+// Services/ClientService.cs
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
 using GreenGrass.Models;
+using GreenGrass.Data;
+
 
 namespace GreenGrass.Services
 {
@@ -18,125 +22,208 @@ namespace GreenGrass.Services
         Task<ServiceRecord> UpdateServiceRecordAsync(ServiceRecord serviceRecord);
     }
 
+
     public class ClientService : IClientService
     {
-        private readonly List<Client> _clients = [];
-        private int _nextId = 1;
-        private int _nextServiceId = 1;
+        private readonly ApplicationDbContext _context;
 
-        public ClientService()
+
+        public ClientService(ApplicationDbContext context)
         {
-            // Add some sample data
-            InitializeSampleData();
+            _context = context;
         }
 
-        public Task<List<Client>> GetAllClientsAsync()
-        {
-            return Task.FromResult(_clients.Where(c => c.IsActive).ToList());
-        }
 
-        public Task<Client?> GetClientByIdAsync(int id)
+        public async Task<List<Client>> GetAllClientsAsync()
         {
-            var client = _clients.FirstOrDefault(c => c.Id == id);
-            return Task.FromResult(client);
-        }
-
-        public Task<Client> CreateClientAsync(Client client)
-        {
-            client.Id = _nextId++;
-            client.CreatedDate = DateTime.Now;
-            _clients.Add(client);
-            return Task.FromResult(client);
-        }
-
-        public Task<Client> UpdateClientAsync(Client client)
-        {
-            var existingClient = _clients.FirstOrDefault(c => c.Id == client.Id);
-            if (existingClient != null)
+            try
             {
-                var index = _clients.IndexOf(existingClient);
-                _clients[index] = client;
-            }
-            return Task.FromResult(client);
-        }
+                var customers = await _context.Customers
+                    .Where(c => c.IsActive)
+                    .OrderBy(c => c.LastName)
+                    .ThenBy(c => c.FirstName)
+                    .ToListAsync();
 
-        public Task<bool> DeleteClientAsync(int id)
-        {
-            var client = _clients.FirstOrDefault(c => c.Id == id);
-            if (client != null)
+
+                return customers.Select(MapCustomerToClient).ToList();
+            }
+            catch (Exception ex)
             {
-                client.IsActive = false; // Soft delete
-                return Task.FromResult(true);
+                // Log the exception in a real application
+                throw new InvalidOperationException("Failed to retrieve clients from database", ex);
             }
-            return Task.FromResult(false);
         }
 
+
+        public async Task<Client?> GetClientByIdAsync(int id)
+        {
+            try
+            {
+                var customer = await _context.Customers
+                    .FirstOrDefaultAsync(c => c.Id == id);
+
+
+                return customer != null ? MapCustomerToClient(customer) : null;
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException($"Failed to retrieve client with ID {id}", ex);
+            }
+        }
+
+
+        public async Task<Client> CreateClientAsync(Client client)
+        {
+            try
+            {
+                var customer = MapClientToCustomer(client);
+                customer.CreatedDate = DateTime.Now;
+
+
+                _context.Customers.Add(customer);
+                await _context.SaveChangesAsync();
+
+
+                return MapCustomerToClient(customer);
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException("Failed to create client", ex);
+            }
+        }
+
+
+        public async Task<Client> UpdateClientAsync(Client client)
+        {
+            try
+            {
+                var existingCustomer = await _context.Customers
+                    .FirstOrDefaultAsync(c => c.Id == client.Id);
+
+
+                if (existingCustomer == null)
+                {
+                    throw new InvalidOperationException($"Client with ID {client.Id} not found");
+                }
+
+
+                // Update properties
+                existingCustomer.FirstName = client.FirstName;
+                existingCustomer.LastName = client.LastName;
+                existingCustomer.Email = client.Email;
+                existingCustomer.PhoneNumber = client.PhoneNumber;
+                existingCustomer.Street = client.Address.Street;
+                existingCustomer.City = client.Address.City;
+                existingCustomer.State = client.Address.State;
+                existingCustomer.ZipCode = client.Address.ZipCode;
+                existingCustomer.PaymentMethodToken = client.PaymentMethodToken;
+                existingCustomer.LastFourDigits = client.LastFourDigits;
+                existingCustomer.IsActive = client.IsActive;
+
+
+                await _context.SaveChangesAsync();
+
+
+                return MapCustomerToClient(existingCustomer);
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException($"Failed to update client with ID {client.Id}", ex);
+            }
+        }
+
+
+        public async Task<bool> DeleteClientAsync(int id)
+        {
+            try
+            {
+                var customer = await _context.Customers
+                    .FirstOrDefaultAsync(c => c.Id == id);
+
+
+                if (customer == null)
+                {
+                    return false;
+                }
+
+
+                customer.IsActive = false; // Soft delete
+                await _context.SaveChangesAsync();
+
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException($"Failed to delete client with ID {id}", ex);
+            }
+        }
+
+
+        // Note: Service history functionality would require additional tables
+        // For now, returning empty lists to maintain interface compatibility
         public Task<List<ServiceRecord>> GetClientServiceHistoryAsync(int clientId)
         {
-            var client = _clients.FirstOrDefault(c => c.Id == clientId);
-            return Task.FromResult(client?.ServiceHistory ?? []);
+            return Task.FromResult(new List<ServiceRecord>());
         }
+
 
         public Task<ServiceRecord> AddServiceRecordAsync(ServiceRecord serviceRecord)
         {
-            serviceRecord.Id = _nextServiceId++;
-            var client = _clients.FirstOrDefault(c => c.Id == serviceRecord.ClientId);
-            if (client != null)
-            {
-                client.ServiceHistory.Add(serviceRecord);
-            }
             return Task.FromResult(serviceRecord);
         }
+
 
         public Task<ServiceRecord> UpdateServiceRecordAsync(ServiceRecord serviceRecord)
         {
-            var client = _clients.FirstOrDefault(c => c.Id == serviceRecord.ClientId);
-            if (client != null)
-            {
-                var existingRecord = client.ServiceHistory.FirstOrDefault(s => s.Id == serviceRecord.Id);
-                if (existingRecord != null)
-                {
-                    var index = client.ServiceHistory.IndexOf(existingRecord);
-                    client.ServiceHistory[index] = serviceRecord;
-                }
-            }
             return Task.FromResult(serviceRecord);
         }
 
-        private void InitializeSampleData()
+
+        private static Client MapCustomerToClient(Customer customer)
         {
-            _clients.Add(new Client
+            return new Client
             {
-                Id = _nextId++,
-                FirstName = "John",
-                LastName = "Smith",
-                Email = "john.smith@email.com",
-                PhoneNumber = "(555) 123-4567",
+                Id = customer.Id,
+                FirstName = customer.FirstName,
+                LastName = customer.LastName,
+                Email = customer.Email,
+                PhoneNumber = customer.PhoneNumber,
                 Address = new Address
                 {
-                    Street = "123 Main St",
-                    City = "Hometown",
-                    State = "TX",
-                    ZipCode = "12345"
+                    Street = customer.Street,
+                    City = customer.City,
+                    State = customer.State,
+                    ZipCode = customer.ZipCode
                 },
-                PaymentMethodToken = "tok_visa1234",
-                LastFourDigits = "1234",
-                ServiceHistory = 
-                [
-                    new ServiceRecord
-                    {
-                        Id = _nextServiceId++,
-                        ClientId = _nextId - 1,
-                        ServiceType = ServiceType.LawnMowing,
-                        Description = "Weekly lawn mowing service",
-                        ServiceDate = DateTime.Now.AddDays(-7),
-                        Amount = 50.00m,
-                        Status = ServiceStatus.Completed,
-                        CompletedDate = DateTime.Now.AddDays(-7),
-                        PaymentStatus = PaymentStatus.Paid
-                    }
-                ]
-            });
+                CreatedDate = customer.CreatedDate,
+                IsActive = customer.IsActive,
+                PaymentMethodToken = customer.PaymentMethodToken,
+                LastFourDigits = customer.LastFourDigits,
+                ServiceHistory = new List<ServiceRecord>() // Empty for now
+            };
+        }
+
+
+        private static Customer MapClientToCustomer(Client client)
+        {
+            return new Customer
+            {
+                Id = client.Id,
+                FirstName = client.FirstName,
+                LastName = client.LastName,
+                Email = client.Email,
+                PhoneNumber = client.PhoneNumber,
+                Street = client.Address.Street,
+                City = client.Address.City,
+                State = client.Address.State,
+                ZipCode = client.Address.ZipCode,
+                Country = "USA",
+                CreatedDate = client.CreatedDate,
+                IsActive = client.IsActive,
+                PaymentMethodToken = client.PaymentMethodToken,
+                LastFourDigits = client.LastFourDigits
+            };
         }
     }
 }

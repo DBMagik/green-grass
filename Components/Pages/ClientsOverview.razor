@@ -1,10 +1,13 @@
+@* Components/Pages/ClientsOverview.razor *@
 @page "/clients"
 @using GreenGrass.Models
 @using GreenGrass.Services
 @inject IClientService ClientService
 @inject NavigationManager Navigation
 
+
 <PageTitle>Clients - GreenGrass</PageTitle>
+
 
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h1>Clients</h1>
@@ -13,7 +16,8 @@
     </button>
 </div>
 
-@if (_clients == null)
+
+@if (_isLoading)
 {
     <div class="text-center">
         <div class="spinner-border" role="status">
@@ -21,7 +25,17 @@
         </div>
     </div>
 }
-else if (!_clients.Any())
+else if (_errorMessage != null)
+{
+    <div class="alert alert-danger">
+        <h4>Error Loading Clients</h4>
+        <p>@_errorMessage</p>
+        <button class="btn btn-outline-danger" @onclick="LoadClients">
+            <i class="bi bi-arrow-clockwise"></i> Retry
+        </button>
+    </div>
+}
+else if (_clients == null || !_clients.Any())
 {
     <div class="alert alert-info">
         <h4>No clients found</h4>
@@ -34,9 +48,14 @@ else
         @foreach (var client in _clients)
         {
             <div class="col-md-6 col-lg-4 mb-3">
-                <div class="card h-100">
+                <div class="card h-100 client-card" style="cursor: pointer;" @onclick="@(() => Navigation.NavigateTo($"/clients/{client.Id}"))">
                     <div class="card-body">
-                        <h5 class="card-title">@client.FullName</h5>
+                        <div class="d-flex justify-content-between align-items-start mb-2">
+                            <h5 class="card-title mb-0">@client.FullName</h5>
+                            <span class="badge bg-@(client.IsActive ? "success" : "secondary")">
+                                @(client.IsActive ? "Active" : "Inactive")
+                            </span>
+                        </div>
                         <p class="card-text">
                             <i class="bi bi-envelope"></i> @client.Email<br>
                             <i class="bi bi-telephone"></i> @client.PhoneNumber<br>
@@ -44,16 +63,16 @@ else
                         </p>
                         <div class="d-flex justify-content-between align-items-center">
                             <small class="text-muted">
-                                @client.ServiceHistory.Count service(s)
+                                Client since @client.CreatedDate.ToString("MMM yyyy")
                             </small>
-                            <div class="btn-group" role="group">
+                            <div class="btn-group" role="group" @onclick:stopPropagation="true">
                                 <button class="btn btn-sm btn-outline-primary" 
                                         @onclick="@(() => Navigation.NavigateTo($"/clients/{client.Id}"))">
-                                    View
+                                    <i class="bi bi-eye"></i> View
                                 </button>
                                 <button class="btn btn-sm btn-outline-secondary" 
                                         @onclick="@(() => Navigation.NavigateTo($"/clients/{client.Id}/edit"))">
-                                    Edit
+                                    <i class="bi bi-pencil"></i> Edit
                                 </button>
                             </div>
                         </div>
@@ -64,11 +83,39 @@ else
     </div>
 }
 
+
 @code {
     private List<Client>? _clients;
+    private bool _isLoading = true;
+    private string? _errorMessage;
+
 
     protected override async Task OnInitializedAsync()
     {
-        _clients = await ClientService.GetAllClientsAsync();
+        await LoadClients();
+    }
+
+
+    private async Task LoadClients()
+    {
+        _isLoading = true;
+        _errorMessage = null;
+        StateHasChanged();
+
+
+        try
+        {
+            _clients = await ClientService.GetAllClientsAsync();
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = "Unable to load clients. Please try again later.";
+            Console.WriteLine($"Error loading clients: {ex.Message}");
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
     }
 }
