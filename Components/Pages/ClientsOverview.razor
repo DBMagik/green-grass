@@ -1,6 +1,8 @@
 @page "/clients"
+@rendermode InteractiveServer
 @using GreenGrass.Models
 @using GreenGrass.Services
+@using Microsoft.Identity.Client
 @inject IClientService ClientService
 @inject NavigationManager Navigation
 
@@ -8,9 +10,9 @@
 
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h1>Clients</h1>
-    <button class="btn btn-primary" @onclick="@(() => Navigation.NavigateTo("/clients/new"))">
-        <i class="bi bi-plus-circle"></i> Add New Client
-    </button>
+    <p>
+        <button class="btn btn-primary" @onclick="AddNewClient">Add New Client</button>
+    </p>
 </div>
 
 @if (_clients == null)
@@ -34,9 +36,14 @@ else
         @foreach (var client in _clients)
         {
             <div class="col-md-6 col-lg-4 mb-3">
-                <div class="card h-100">
+                <div class="card h-100 client-card" style="cursor: pointer;" @onclick="@(() => Navigation.NavigateTo($"/clients/{client.Id}"))">
                     <div class="card-body">
-                        <h5 class="card-title">@client.FullName</h5>
+                        <div class="d-flex justify-content-between align-items-start mb-2">
+                            <h5 class="card-title mb-0">@client.FullName</h5>
+                            <span class="badge bg-@(client.IsActive ? "success" : "secondary")">
+                                @(client.IsActive ? "Active" : "Inactive")
+                            </span>
+                        </div>
                         <p class="card-text">
                             <i class="bi bi-envelope"></i> @client.Email<br>
                             <i class="bi bi-telephone"></i> @client.PhoneNumber<br>
@@ -45,15 +52,20 @@ else
                         <div class="d-flex justify-content-between align-items-center">
                             <small class="text-muted">
                                 @client.ServiceHistory.Count service(s)
+                                @if (client.ServiceHistory.Any())
+                                {
+                                    <br>
+                                    <span class="text-success">$@client.ServiceHistory.Where(s => s.PaymentStatus == PaymentStatus.Paid).Sum(s => s.Amount).ToString("F2") total</span>
+                                }
                             </small>
-                            <div class="btn-group" role="group">
+                            <div class="btn-group" role="group" @onclick:stopPropagation="true">
                                 <button class="btn btn-sm btn-outline-primary" 
                                         @onclick="@(() => Navigation.NavigateTo($"/clients/{client.Id}"))">
-                                    View
+                                    <i class="bi bi-eye"></i> View
                                 </button>
                                 <button class="btn btn-sm btn-outline-secondary" 
                                         @onclick="@(() => Navigation.NavigateTo($"/clients/{client.Id}/edit"))">
-                                    Edit
+                                    <i class="bi bi-pencil"></i> Edit
                                 </button>
                             </div>
                         </div>
@@ -69,6 +81,25 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        _clients = await ClientService.GetAllClientsAsync();
+        try
+        {
+            // I suspect the error is happening on the next line.
+            _clients = await ClientService.GetAllClientsAsync();
+        }
+        catch (Exception ex)
+        {
+            // This will print the hidden error to your application's console.
+            Console.WriteLine("!!!!!!!!!! EXCEPTION IN OnInitializedAsync !!!!!!!!!!");
+            Console.WriteLine(ex);
+            // Initialize _clients to an empty list so the page can still render.
+            _clients = new List<Client>();
+        }
     }
+    
+    private void AddNewClient()
+    {
+        // This should now work correctly
+        Navigation.NavigateTo("/clients/new");
+    }
+
 }

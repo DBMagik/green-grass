@@ -1,0 +1,373 @@
+@page "/payments"
+@rendermode InteractiveServer
+@using GreenGrass.Models
+@using GreenGrass.Services
+@inject IClientService ClientService
+@inject IPaymentService PaymentService
+@inject NavigationManager Navigation
+
+<PageTitle>Payments - GreenGrass</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>Payment Management</h1>
+    <button class="btn btn-primary" @onclick="ProcessPendingPayments" disabled="@_isProcessingPayments">
+        @if (_isProcessingPayments)
+        {
+            <span class="spinner-border spinner-border-sm me-2"></span>
+        }
+        <i class="bi bi-credit-card"></i> Process Pending Payments
+    </button>
+</div>
+
+<!-- Payment Statistics -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <h5 class="card-title text-success">$@_totalRevenue.ToString("F2")</h5>
+                <p class="card-text">Total Revenue</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <h5 class="card-title text-warning">$@_pendingAmount.ToString("F2")</h5>
+                <p class="card-text">Pending Payments</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <h5 class="card-title text-danger">$@_failedAmount.ToString("F2")</h5>
+                <p class="card-text">Failed Payments</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <h5 class="card-title text-primary">@_totalTransactions</h5>
+                <p class="card-text">Total Transactions</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Filter and Search -->
+<div class="card mb-4">
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-3">
+                <label for="paymentStatusFilter" class="form-label">Payment Status</label>
+                <select id="paymentStatusFilter" class="form-select" @bind="_selectedPaymentStatus" @bind:after="FilterPayments">
+                    <option value="">All Statuses</option>
+                    <option value="Pending">Pending</option>
+                    <option value="Paid">Paid</option>
+                    <option value="Failed">Failed</option>
+                    <option value="Processing">Processing</option>
+                    <option value="Refunded">Refunded</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label for="dateRange" class="form-label">Date Range</label>
+                <select id="dateRange" class="form-select" @bind="_selectedDateRange" @bind:after="FilterPayments">
+                    <option value="">All Time</option>
+                    <option value="today">Today</option>
+                    <option value="week">This Week</option>
+                    <option value="month">This Month</option>
+                    <option value="quarter">This Quarter</option>
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label for="searchText" class="form-label">Search</label>
+                <input id="searchText" type="text" class="form-control" placeholder="Search by client name or transaction ID..." 
+                       @bind="_searchText" @bind:after="FilterPayments" />
+            </div>
+            <div class="col-md-2 d-flex align-items-end">
+                <button class="btn btn-outline-secondary w-100" @onclick="ClearFilters">
+                    <i class="bi bi-x-circle"></i> Clear
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Payments List -->
+@if (_filteredPayments == null)
+{
+    <div class="text-center">
+        <div class="spinner-border" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+    </div>
+}
+else if (!_filteredPayments.Any())
+{
+    <div class="alert alert-info">
+        <h4>No payments found</h4>
+        <p>@(_allPayments.Any() ? "No payments match your current filters." : "No payment records available.")</p>
+    </div>
+}
+else
+{
+    <div class="card">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Client</th>
+                            <th>Service</th>
+                            <th>Amount</th>
+                            <th>Status</th>
+                            <th>Transaction ID</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var payment in _filteredPayments.OrderByDescending(p => p.ServiceDate))
+                        {
+                            <tr>
+                                <td>@payment.ServiceDate.ToString("MMM dd, yyyy")</td>
+                                <td>
+                                    <a href="/clients/@payment.ClientId" class="text-decoration-none">
+                                        @payment.Client?.FullName
+                                    </a>
+                                </td>
+                                <td>
+                                    <span class="badge bg-secondary">@payment.ServiceType</span>
+                                    <br />
+                                    <small class="text-muted">@payment.Description</small>
+                                </td>
+                                <td>$@payment.Amount.ToString("F2")</td>
+                                <td>
+                                    <span class="badge bg-@GetPaymentStatusColor(payment.PaymentStatus)">
+                                        @payment.PaymentStatus
+                                    </span>
+                                </td>
+                                <td>
+                                    @if (!string.IsNullOrEmpty(payment.PaymentTransactionId))
+                                    {
+                                        <code>@payment.PaymentTransactionId</code>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">-</span>
+                                    }
+                                </td>
+                                <td>
+                                    <div class="btn-group" role="group">
+                                        @if (payment.PaymentStatus == PaymentStatus.Pending && payment.Status == ServiceStatus.Completed)
+                                        {
+                                            <button class="btn btn-sm btn-success" @onclick="() => ProcessSinglePayment(payment)" disabled="@_isProcessingPayments">
+                                                <i class="bi bi-credit-card"></i>
+                                            </button>
+                                        }
+                                        @if (payment.PaymentStatus == PaymentStatus.Failed)
+                                        {
+                                            <button class="btn btn-sm btn-warning" @onclick="() => RetryPayment(payment)" disabled="@_isProcessingPayments">
+                                                <i class="bi bi-arrow-clockwise"></i>
+                                            </button>
+                                        }
+                                        @if (payment.PaymentStatus == PaymentStatus.Paid)
+                                        {
+                                            <button class="btn btn-sm btn-outline-danger" @onclick="() => RefundPayment(payment)">
+                                                <i class="bi bi-arrow-counterclockwise"></i>
+                                            </button>
+                                        }
+                                        <button class="btn btn-sm btn-outline-primary" @onclick="() => ViewPaymentDetails(payment)">
+                                            <i class="bi bi-eye"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<ServiceRecord> _allPayments = [];
+    private List<ServiceRecord> _filteredPayments = [];
+    private List<Client> _clients = [];
+    
+    private string _selectedPaymentStatus = "";
+    private string _selectedDateRange = "";
+    private string _searchText = "";
+    
+    private decimal _totalRevenue = 0;
+    private decimal _pendingAmount = 0;
+    private decimal _failedAmount = 0;
+    private int _totalTransactions = 0;
+    
+    private bool _isProcessingPayments = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        _clients = await ClientService.GetAllClientsAsync();
+        _allPayments = [];
+        
+        // Collect all service records from all clients
+        foreach (var client in _clients)
+        {
+            var serviceHistory = await ClientService.GetClientServiceHistoryAsync(client.Id);
+            foreach (var service in serviceHistory)
+            {
+                service.Client = client; // Set the client reference
+                _allPayments.Add(service);
+            }
+        }
+        
+        UpdateStatistics();
+        FilterPayments();
+    }
+
+    private void UpdateStatistics()
+    {
+        _totalRevenue = _allPayments.Where(p => p.PaymentStatus == PaymentStatus.Paid).Sum(p => p.Amount);
+        _pendingAmount = _allPayments.Where(p => p.PaymentStatus == PaymentStatus.Pending).Sum(p => p.Amount);
+        _failedAmount = _allPayments.Where(p => p.PaymentStatus == PaymentStatus.Failed).Sum(p => p.Amount);
+        _totalTransactions = _allPayments.Count;
+    }
+
+    private void FilterPayments()
+    {
+        var filtered = _allPayments.AsEnumerable();
+
+        if (!string.IsNullOrEmpty(_selectedPaymentStatus) && Enum.TryParse<PaymentStatus>(_selectedPaymentStatus, out var paymentStatus))
+        {
+            filtered = filtered.Where(p => p.PaymentStatus == paymentStatus);
+        }
+
+        if (!string.IsNullOrEmpty(_selectedDateRange))
+        {
+            var now = DateTime.Now;
+            filtered = _selectedDateRange switch
+            {
+                "today" => filtered.Where(p => p.ServiceDate.Date == now.Date),
+                "week" => filtered.Where(p => p.ServiceDate >= now.AddDays(-7)),
+                "month" => filtered.Where(p => p.ServiceDate >= now.AddMonths(-1)),
+                "quarter" => filtered.Where(p => p.ServiceDate >= now.AddMonths(-3)),
+                _ => filtered
+            };
+        }
+
+        if (!string.IsNullOrEmpty(_searchText))
+        {
+            var searchLower = _searchText.ToLower();
+            filtered = filtered.Where(p => 
+                p.Client?.FullName.ToLower().Contains(searchLower) == true ||
+                p.PaymentTransactionId?.ToLower().Contains(searchLower) == true);
+        }
+
+        _filteredPayments = filtered.ToList();
+        StateHasChanged();
+    }
+
+    private void ClearFilters()
+    {
+        _selectedPaymentStatus = "";
+        _selectedDateRange = "";
+        _searchText = "";
+        FilterPayments();
+    }
+
+    private async Task ProcessPendingPayments()
+    {
+        _isProcessingPayments = true;
+        StateHasChanged();
+
+        try
+        {
+            var pendingPayments = _allPayments.Where(p => 
+                p.PaymentStatus == PaymentStatus.Pending && 
+                p.Status == ServiceStatus.Completed).ToList();
+
+            foreach (var payment in pendingPayments)
+            {
+                await ProcessSinglePayment(payment);
+            }
+
+            await LoadData();
+        }
+        finally
+        {
+            _isProcessingPayments = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ProcessSinglePayment(ServiceRecord payment)
+    {
+        if (payment.Client?.DefaultPaymentMethod == null)
+        {
+            // Handle case where no payment method is available
+            return;
+        }
+
+        try
+        {
+            var result = await PaymentService.ProcessPaymentAsync(payment.ClientId, payment.Amount, payment.Description);
+            
+            if (result.Success)
+            {
+                payment.PaymentStatus = PaymentStatus.Paid;
+                payment.PaymentTransactionId = result.TransactionId;
+                payment.PaymentDate = DateTime.Now;
+            }
+            else
+            {
+                payment.PaymentStatus = PaymentStatus.Failed;
+            }
+
+            await ClientService.UpdateServiceRecordAsync(payment);
+        }
+        catch (Exception ex)
+        {
+            payment.PaymentStatus = PaymentStatus.Failed;
+            await ClientService.UpdateServiceRecordAsync(payment);
+            Console.WriteLine($"Payment processing failed: {ex.Message}");
+        }
+    }
+
+    private async Task RetryPayment(ServiceRecord payment)
+    {
+        payment.PaymentStatus = PaymentStatus.Pending;
+        await ClientService.UpdateServiceRecordAsync(payment);
+        await ProcessSinglePayment(payment);
+        await LoadData();
+    }
+
+    private async Task RefundPayment(ServiceRecord payment)
+    {
+        // TODO: Implement actual refund logic
+        payment.PaymentStatus = PaymentStatus.Refunded;
+        await ClientService.UpdateServiceRecordAsync(payment);
+        await LoadData();
+    }
+
+    private void ViewPaymentDetails(ServiceRecord payment)
+    {
+        Navigation.NavigateTo($"/clients/{payment.ClientId}");
+    }
+
+    private string GetPaymentStatusColor(PaymentStatus status) => status switch
+    {
+        PaymentStatus.Paid => "success",
+        PaymentStatus.Failed => "danger",
+        PaymentStatus.Processing => "warning",
+        PaymentStatus.Refunded => "info",
+        _ => "secondary"
+    };
+}

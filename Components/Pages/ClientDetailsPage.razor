@@ -159,7 +159,7 @@ else
 }
 
 @code {
-    [Parameter] public int ClientId { get; set; }
+    [Parameter] public Guid ClientId { get; set; }
     
     private Client? _client;
     private List<ServiceRecord> _serviceHistory = new();
