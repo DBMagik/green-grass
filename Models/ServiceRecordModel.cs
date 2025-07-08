@@ -5,8 +5,8 @@ namespace GreenGrass.Models
 {
     public class ServiceRecord
     {
-        public int Id { get; set; }
-        public int ClientId { get; set; }
+        public Guid Id { get; set; }
+        public Guid ClientId { get; set; }
         
         [Required]
         public ServiceType ServiceType { get; set; }
@@ -16,7 +16,6 @@ namespace GreenGrass.Models
         public string Description { get; set; } = string.Empty;
         
         [Required]
-        [Range(0.01, 10000.00)]
         public decimal Amount { get; set; }
         
         public DateTime ServiceDate { get; set; }
