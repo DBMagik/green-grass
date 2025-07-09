@@ -1,26 +1,19 @@
-using GreenGrass.Components;
-using GreenGrass.Services;
 using GreenGrass.Data;
-using Microsoft.EntityFrameworkCore;
+using GreenGrass.Services;
 
 var builder = WebApplication.CreateBuilder(args);
-
-// Force the application to use the correct URLs from launchSettings.json
-builder.WebHost.UseUrls("https://localhost:7192", "http://localhost:5192");
 
 // Add services to the container.
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
+// Register Entity Framework
+builder.Services.AddScoped<ApplicationDbContext>();
 
-builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+// Register Authentication Service
+builder.Services.AddScoped<IAuthService, AuthService>();
 
-
-// Register application services
-
-builder.Services.AddScoped<IClientService, ClientService>(); 
-builder.Services.AddScoped<IPaymentService, PaymentService>();
+builder.Services.AddScoped<IClientService, ClientService>();
 
 var app = builder.Build();
 
@@ -28,16 +21,14 @@ var app = builder.Build();
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Error", createScopeForErrors: true);
-    // The default HSTS value is 30 days. You may want to change this for production scenarios.
     app.UseHsts();
 }
 
-//app.UseHttpsRedirection();
-
+app.UseHttpsRedirection();
 app.UseStaticFiles();
 app.UseAntiforgery();
 
-app.MapRazorComponents<App>()
+app.MapRazorComponents<GreenGrass.Components.App>()
     .AddInteractiveServerRenderMode();
 
 app.Run();

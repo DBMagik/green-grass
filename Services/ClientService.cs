@@ -11,11 +11,11 @@ namespace GreenGrass.Services
     public interface IClientService
     {
         Task<List<Client>> GetAllClientsAsync();
-        Task<Client?> GetClientByIdAsync(int id);
+        Task<Client?> GetClientByIdAsync(Guid id);
         Task<Client> CreateClientAsync(Client client);
         Task<Client> UpdateClientAsync(Client client);
-        Task<bool> DeleteClientAsync(int id);
-        Task<List<ServiceRecord>> GetClientServiceHistoryAsync(int clientId);
+        Task<bool> DeleteClientAsync(Guid id);
+        Task<List<ServiceRecord>> GetClientServiceHistoryAsync(Guid clientId);
         Task<ServiceRecord> AddServiceRecordAsync(ServiceRecord serviceRecord);
         Task<ServiceRecord> UpdateServiceRecordAsync(ServiceRecord serviceRecord);
     }
@@ -43,7 +43,7 @@ namespace GreenGrass.Services
             }
         }
 
-        public async Task<Client?> GetClientByIdAsync(int id)
+        public async Task<Client?> GetClientByIdAsync(Guid id)
         {
             try
             {
@@ -94,7 +94,7 @@ namespace GreenGrass.Services
             }
         }
 
-        public async Task<bool> DeleteClientAsync(int id)
+        public async Task<bool> DeleteClientAsync(Guid id)
         {
             try
             {
@@ -115,7 +115,7 @@ namespace GreenGrass.Services
         }
 
         // In a full implementation, add related entities/tables
-        public Task<List<ServiceRecord>> GetClientServiceHistoryAsync(int clientId)
+        public Task<List<ServiceRecord>> GetClientServiceHistoryAsync(Guid clientId)
         {
             // TODO: Implement DB support once ServiceRecord table is defined
             return Task.FromResult(new List<ServiceRecord>());  // Placeholder to avoid breaking

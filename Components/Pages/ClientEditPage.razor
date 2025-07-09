@@ -1,0 +1,239 @@
+@page "/clients/{ClientId:int}/edit"
+@using GreenGrass.Models
+@using GreenGrass.Services
+@inject IClientService ClientService
+@inject NavigationManager Navigation
+
+<PageTitle>Edit Client - GreenGrass</PageTitle>
+
+@if (_client == null)
+{
+    <div class="text-center">
+        <div class="spinner-border" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+    </div>
+}
+else
+{
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1>Edit Client</h1>
+        <div>
+            <button class="btn btn-outline-secondary me-2" @onclick="@(() => Navigation.NavigateTo($"/clients/{ClientId}"))">
+                <i class="bi bi-arrow-left"></i> Back to Details
+            </button>
+            <button class="btn btn-outline-secondary" @onclick="@(() => Navigation.NavigateTo("/clients"))">
+                <i class="bi bi-list"></i> All Clients
+            </button>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-body">
+                    <EditForm Model="@_client" OnValidSubmit="@HandleValidSubmit">
+                        <DataAnnotationsValidator />
+                        <ValidationSummary class="text-danger" />
+
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label for="firstName" class="form-label">First Name</label>
+                                <InputText id="firstName" class="form-control" @bind-Value="_client.FirstName" />
+                                <ValidationMessage For="@(() => _client.FirstName)" />
+                            </div>
+                            <div class="col-md-6">
+                                <label for="lastName" class="form-label">Last Name</label>
+                                <InputText id="lastName" class="form-control" @bind-Value="_client.LastName" />
+                                <ValidationMessage For="@(() => _client.LastName)" />
+                            </div>
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label for="email" class="form-label">Email</label>
+                                <InputText id="email" type="email" class="form-control" @bind-Value="_client.Email" />
+                                <ValidationMessage For="@(() => _client.Email)" />
+                            </div>
+                            <div class="col-md-6">
+                                <label for="phone" class="form-label">Phone Number</label>
+                                <InputText id="phone" class="form-control" @bind-Value="_client.PhoneNumber" />
+                                <ValidationMessage For="@(() => _client.PhoneNumber)" />
+                            </div>
+                        </div>
+
+                        <h5 class="mb-3">Service Address</h5>
+                        
+                        <div class="mb-3">
+                            <label for="street" class="form-label">Street Address</label>
+                            <InputText id="street" class="form-control" @bind-Value="_client.Address.Street" />
+                            <ValidationMessage For="@(() => _client.Address.Street)" />
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-4">
+                                <label for="city" class="form-label">City</label>
+                                <InputText id="city" class="form-control" @bind-Value="_client.Address.City" />
+                                <ValidationMessage For="@(() => _client.Address.City)" />
+                            </div>
+                            <div class="col-md-4">
+                                <label for="state" class="form-label">State</label>
+                                <InputText id="state" class="form-control" @bind-Value="_client.Address.State" />
+                                <ValidationMessage For="@(() => _client.Address.State)" />
+                            </div>
+                            <div class="col-md-4">
+                                <label for="zipCode" class="form-label">ZIP Code</label>
+                                <InputText id="zipCode" class="form-control" @bind-Value="_client.Address.ZipCode" />
+                                <ValidationMessage For="@(() => _client.Address.ZipCode)" />
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <div class="form-check">
+                                <InputCheckbox id="isActive" class="form-check-input" @bind-Value="_client.IsActive" />
+                                <label class="form-check-label" for="isActive">
+                                    Active Client
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="d-flex justify-content-between">
+                            <button type="button" class="btn btn-danger" @onclick="@(() => ShowDeleteConfirmation = true)">
+                                <i class="bi bi-trash"></i> Delete Client
+                            </button>
+                            <div class="d-flex gap-2">
+                                <button type="button" class="btn btn-secondary" @onclick="@(() => Navigation.NavigateTo($"/clients/{ClientId}"))">
+                                    Cancel
+                                </button>
+                                <button type="submit" class="btn btn-primary" disabled="@_isSubmitting">
+                                    @if (_isSubmitting)
+                                    {
+                                        <span class="spinner-border spinner-border-sm me-2"></span>
+                                    }
+                                    Update Client
+                                </button>
+                            </div>
+                        </div>
+                    </EditForm>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-header">
+                    <h6 class="mb-0">Client Information</h6>
+                </div>
+                <div class="card-body">
+                    <p><strong>Client ID:</strong> @_client.Id</p>
+                    <p><strong>Created:</strong> @_client.CreatedDate.ToString("MMM dd, yyyy")</p>
+                    <p><strong>Services:</strong> @_client.ServiceHistory.Count</p>
+                    <p><strong>Status:</strong> 
+                        <span class="badge bg-@(_client.IsActive ? "success" : "secondary")">
+                            @(_client.IsActive ? "Active" : "Inactive")
+                        </span>
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Delete Confirmation Modal -->
+@if (ShowDeleteConfirmation)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Confirm Delete</h5>
+                    <button type="button" class="btn-close" @onclick="@(() => ShowDeleteConfirmation = false)"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Are you sure you want to delete <strong>@_client?.FullName</strong>?</p>
+                    <p class="text-muted">This action will deactivate the client but preserve their service history.</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="@(() => ShowDeleteConfirmation = false)">Cancel</button>
+                    <button type="button" class="btn btn-danger" @onclick="HandleDelete" disabled="@_isDeleting">
+                        @if (_isDeleting)
+                        {
+                            <span class="spinner-border spinner-border-sm me-2"></span>
+                        }
+                        Delete Client
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public Guid ClientId { get; set; }
+    
+    private Client? _client;
+    private bool _isSubmitting = false;
+    private bool _isDeleting = false;
+    private bool ShowDeleteConfirmation = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadClient();
+    }
+
+    private async Task LoadClient()
+    {
+        _client = await ClientService.GetClientByIdAsync(ClientId);
+        if (_client == null)
+        {
+            Navigation.NavigateTo("/clients");
+        }
+    }
+
+    private async Task HandleValidSubmit()
+    {
+        if (_client == null) return;
+
+        _isSubmitting = true;
+        StateHasChanged();
+
+        try
+        {
+            await ClientService.UpdateClientAsync(_client);
+            Navigation.NavigateTo($"/clients/{ClientId}");
+        }
+        catch (Exception ex)
+        {
+            // Handle error - in a real app, you'd show a proper error message
+            Console.WriteLine($"Error updating client: {ex.Message}");
+        }
+        finally
+        {
+            _isSubmitting = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task HandleDelete()
+    {
+        _isDeleting = true;
+        StateHasChanged();
+
+        try
+        {
+            await ClientService.DeleteClientAsync(ClientId);
+            Navigation.NavigateTo("/clients");
+        }
+        catch (Exception ex)
+        {
+            // Handle error - in a real app, you'd show a proper error message
+            Console.WriteLine($"Error deleting client: {ex.Message}");
+        }
+        finally
+        {
+            _isDeleting = false;
+            ShowDeleteConfirmation = false;
+            StateHasChanged();
+        }
+    }
+}
