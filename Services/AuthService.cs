@@ -1,17 +1,22 @@
 using GreenGrass.Data;
+using GreenGrass.Models;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Cryptography;
 using System.Text;
 
 namespace GreenGrass.Services
 {
+    public enum AuthStatus { Login, Registration, Failure }
+
+    public class AuthResult
+    {
+        public Login? Login { get; set; }
+        public AuthStatus Status { get; set; }
+    }
+
     public interface IAuthService
     {
-        Task<User?> AuthenticateAsync(string usernameOrEmail, string password);
-        Task<User?> RegisterAsync(string username, string email, string password, string firstName, string lastName);
-        Task<bool> UserExistsAsync(string usernameOrEmail);
-        string HashPassword(string password);
-        bool VerifyPassword(string password, string hash);
+        Task<AuthResult> LoginOrCreateAsync(string email, string password);
     }
 
     public class AuthService : IAuthService
@@ -23,62 +28,71 @@ namespace GreenGrass.Services
             _context = context;
         }
 
-        public async Task<User?> AuthenticateAsync(string usernameOrEmail, string password)
+        public async Task<AuthResult> LoginOrCreateAsync(string email, string password)
         {
-            var user = await _context.Users
-                .FirstOrDefaultAsync(u => u.Username == usernameOrEmail || u.Email == usernameOrEmail);
-
-            if (user == null || !VerifyPassword(password, user.PasswordHash))
-                return null;
-
-            // Update last login
-            user.LastLogin = DateTime.Now;
-            await _context.SaveChangesAsync();
-
-            return user;
-        }
-
-        public async Task<User?> RegisterAsync(string username, string email, string password, string firstName, string lastName)
-        {
-            // Check if user already exists
-            if (await UserExistsAsync(username) || await UserExistsAsync(email))
-                return null;
-
-            var user = new User
+            try
             {
-                Id = Guid.NewGuid(),
-                Username = username,
-                Email = email,
-                PasswordHash = HashPassword(password),
-                FirstName = firstName,
-                LastName = lastName,
-                CreatedDate = DateTime.Now,
-                IsActive = true
-            };
+                var existingLogin = await _context.Logins
+                    .FirstOrDefaultAsync(l => l.Email == email);
 
-            _context.Users.Add(user);
-            await _context.SaveChangesAsync();
+                if (existingLogin != null)
+                {
+                    if (VerifyPassword(password, existingLogin.PasswordHash, existingLogin.Salt))
+                    {
+                        return new AuthResult { Login = existingLogin, Status = AuthStatus.Login };
+                    }
+                    else
+                    {
+                        return new AuthResult { Status = AuthStatus.Failure };
+                    }
+                }
+                else
+                {
+                    var salt = GenerateSalt();
+                    var passwordHash = HashPassword(password, salt);
 
-            return user;
+                    var newLogin = new Login
+                    {
+                        Id = Guid.NewGuid(),
+                        Email = email,
+                        PasswordHash = passwordHash,
+                        Salt = salt
+                    };
+
+                    _context.Logins.Add(newLogin);
+                    await _context.SaveChangesAsync();
+
+                    return new AuthResult { Login = newLogin, Status = AuthStatus.Registration };
+                }
+            }
+            catch (DbUpdateException)
+            {
+                return new AuthResult { Status = AuthStatus.Failure };
+            }
+            catch
+            {
+                return new AuthResult { Status = AuthStatus.Failure };
+            }
         }
 
-        public async Task<bool> UserExistsAsync(string usernameOrEmail)
+        private byte[] GenerateSalt()
         {
-            return await _context.Users
-                .AnyAsync(u => u.Username == usernameOrEmail || u.Email == usernameOrEmail);
+            return RandomNumberGenerator.GetBytes(32);
         }
 
-        public string HashPassword(string password)
+        private byte[] HashPassword(string password, byte[] salt)
         {
-            using var sha256 = SHA256.Create();
-            var hashedBytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(password + "GreenGrassSalt"));
-            return Convert.ToBase64String(hashedBytes);
+            const int iterations = 10000;
+            using (var pbkdf2 = new Rfc2898DeriveBytes(password, salt, iterations, HashAlgorithmName.SHA256))
+            {
+                return pbkdf2.GetBytes(64);
+            }
         }
 
-        public bool VerifyPassword(string password, string hash)
+        private bool VerifyPassword(string password, byte[] storedHash, byte[] salt)
         {
-            var passwordHash = HashPassword(password);
-            return passwordHash == hash;
+            var computedHash = HashPassword(password, salt);
+            return CryptographicOperations.FixedTimeEquals(computedHash, storedHash);
         }
     }
 }

@@ -13,6 +13,8 @@ builder.Services.AddScoped<ApplicationDbContext>();
 // Register Authentication Service
 builder.Services.AddScoped<IAuthService, AuthService>();
 
+builder.Services.AddScoped<IClientService, ClientService>();
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.

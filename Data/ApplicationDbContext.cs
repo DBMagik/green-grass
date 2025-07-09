@@ -48,6 +48,7 @@ namespace GreenGrass.Data
 
         public DbSet<Customer> Customers { get; set; }
         public DbSet<User> Users { get; set; }
+        public DbSet<Login> Logins { get; set; }
 
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         {
@@ -69,6 +70,15 @@ namespace GreenGrass.Data
                 entity.Property(e => e.Email).IsRequired().HasMaxLength(255);
                 entity.Property(e => e.Username).IsRequired().HasMaxLength(100);
                 entity.Property(e => e.PasswordHash).IsRequired();
+            });
+
+            modelBuilder.Entity<Login>(entity =>
+            {
+                entity.ToTable("Logins");
+                entity.HasIndex(e => e.Email).IsUnique();
+                entity.Property(e => e.Email).IsRequired().HasMaxLength(255);
+                entity.Property(e => e.PasswordHash).IsRequired().HasMaxLength(64);
+                entity.Property(e => e.Salt).IsRequired().HasMaxLength(32);
             });
         }
     }
